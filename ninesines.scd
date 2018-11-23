@@ -15,7 +15,7 @@ var midimap = (
     osc1: (
         level: 3
     ),
-	harms: {|i| (level: 40 + i, tune: 32 + i, on: 56 + i)}!8
+	harms: {|i| (level: 40 + i, tune: 32 + i, fine: 48 + i, upordown: 56 + i)}!8
 );
 
 var a = pow(2,12.reciprocal); // 2^(1/12), need for bend freq calculation
@@ -24,9 +24,11 @@ var a = pow(2,12.reciprocal); // 2^(1/12), need for bend freq calculation
 // design goal: midi messages are interpreted in these functions, synthdef just speaks frequencies
 var calclevels = { | ccs |
     var mastervol = ccs@(midimap.mastervol) / 110; // leave some headroom
-    [mastervol * ccs@(midimap.osc1.level) / 127].addAll({|i|
+
+    [mastervol * (ccs@(midimap.osc1.level) / 127)].addAll({ | i |
         var harm = midimap.harms@i;
-        mastervol * ccs@(harm.level) / 127 * (ccs@(harm.on) / 127)}!8)
+        mastervol * (ccs@(harm.level) / 127)
+    }!8)
 };
 
 var calcbend = { | bendval, halfsteps = 2 |
@@ -36,35 +38,55 @@ var calcbend = { | bendval, halfsteps = 2 |
     bendfreq;
 };
 
+var calctunings = { | ccs |
+    /*var phases = [0].addAll({|i|
+        var harm = midimap.harms@i;
+        (ccs@(harm.tune)/10 * pi).mod(2pi);
+    }!8);*/
+
+    var tunings = [0].addAll({ | i |
+        var harm = midimap.harms@i;
+        if( ccs@(harm.upordown) == 0,
+            {ccs@(harm.tune) * -1},
+            {ccs@(harm.tune)});
+    }!8);
+
+    tunings.postln;
+    tunings;
+};
+
 ~playninesines = { | note, vel, ccs, bend |
 	 Synth(\ninesines, [
 		\note, note,
 		\vel, vel,
         \levels, calclevels.value(ccs),
         \bendfreq, calcbend.value(bend),
+        \tunings, calctunings.value(ccs)
 	]);
 };
 
 ~tuneninesines = { | synth, val, num, bend, ccs |
     synth.set(
+        \levels, calclevels.value(ccs),
         \bendfreq, calcbend.value(bend),
-        \levels, calclevels.value(ccs)
+        \tunings, calctunings.value(ccs)
     );
 };
 
 SynthDef(\ninesines, { |
 	note,
 	vel,
-    tunings = #[1, 0.25, 0.5, 2, 3, 4, 5, 6, 7],
+    tunings = #[ 1, 0.25, 0.5, 2, 3, 4, 5, 6, 7 ],
+    fine = #[ 1, 0.25, 0.5, 2, 3, 4, 5, 6, 7 ],
     levels = #[ 0, 0, 0 , 0, 0, 0, 0, 0, 0 ],
-    phases = #[ 0, 0, 0 , 0, 0, 0, 0, 0, 0 ],
+    phases = #[ 0, 0, 0, 0, 0, 0, 0, 0, 0 ],
 	bendfreq = 1,
 	bendhalfsteps = 2,
 	gate = 1 |
 
     var amp = vel * 0.00315 / (levels.sum.log / 2 + 2); // scale the amplitude to prevent clipping
 
-    var oscs = tunings.collect({|tuning, i| SinOsc.ar(note.midicps * tuning * bendfreq, phases@i, amp * (levels@i))});
+    var oscs = tunings.collect({|tuning, i| SinOsc.ar(((note + tuning).midicps + fine@i) * bendfreq, phases@i, amp * (levels@i))});
 
     Out.ar(0, Pan2.ar(EnvGen.kr(Env.asr, gate, doneAction: 2) * oscs.sum));
 }).add;
@@ -91,7 +113,6 @@ MIDIdef.noteOn(\keypress, { | val, num, chan, src |
 		state.midinotes.put(num, nil);
 	});
 
-    // state.bend.postln;
 	node = ~playninesines.value(num, val, state.ccs, state.bend);
 	state.midinotes.put(num, node);
 });
