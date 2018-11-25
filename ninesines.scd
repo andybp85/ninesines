@@ -29,21 +29,16 @@ var c = pow(2,1200.reciprocal); // 2^(1/1200), need for cents calculation
 // these functions handle the logic for playing and updating the synth defined in the SynthDef below
 // design goal: midi messages are interpreted in these functions, synthdef just speaks frequencies
 var calclevels = { | ccs |
-    var mastervol = ccs@(midimap.mastervol) / 110; // leave some headroom
-
-    [mastervol * (ccs@(midimap.osc1.level) / 127)].addAll({ | i |
-        var harm = midimap.harms@i;
-        mastervol * (ccs@(harm.level) / 127)
-    }!8)
-};
-
-var calcamp = { | levels, midinotes |
-    var levlog = levels.sum.log;
-    if (levlog < 1,
-        { 1 },
-        {  levels.sum.log.postln;
-            (levels.sum.log / (midinotes.select({|k| k.notNil }).size + 1)) // scale the amplitude to prevent clipping
-    })
+    var mastervol = ccs@(midimap.mastervol) / 127;
+    // scale the levels so multiple oscs are as loud as one
+    var ccsum = [ccs@(midimap.osc1.level)].addAll({|i| ccs@(midimap.harms@i).level}!8).sum;
+    if (ccsum == 0,
+        { [0]!9 },
+        { [mastervol * ((127 * (ccs@(midimap.osc1.level) / ccsum)) / 127)].addAll({ | i |
+            var harm = midimap.harms@i;
+            mastervol * ((127 *(ccs@(harm.level) / ccsum)) / 127)
+        }!8)
+    });
 };
 
 var calcbend = { | bendval, halfsteps = 2 |
@@ -61,7 +56,7 @@ var calctunings = { | ccs |
 };
 
 var calccents = { | ccs |
-    [0].addAll({ | i |
+    [1].addAll({ | i |
         var harm = midimap.harms@i;
         var finediff = (ccs@(harm.fine) + 1) - 64;
         pow(c, finediff)
@@ -74,7 +69,7 @@ var calccents = { | ccs |
         \note, note,
         \vel, vel,
         \levels, levels,
-        \amp, calcamp.value(levels, state.midinotes),
+        // \amp, calcamp.value(levels, state.midinotes),
         \bendfreq, calcbend.value(state.bend),
         \tunings, calctunings.value(state.ccs),
         \fine, calccents.value(state.ccs)
@@ -85,7 +80,7 @@ var calccents = { | ccs |
     var levels = calclevels.value(state.ccs);
     synth.set(
         \levels, levels,
-        \amp, calcamp.value(levels, state.midinotes),
+        // \amp, calcamp.value(levels, state.midinotes),
         \bendfreq, calcbend.value(state.bend),
         \tunings, calctunings.value(state.ccs),
         \fine, calccents.value(state.ccs)
@@ -105,7 +100,7 @@ SynthDef(\ninesines, { |
 	bendhalfsteps = 2,
 	gate = 1 |
 
-    var oscs = tunings.collect({|tuning, i| SinOsc.ar(((note + tuning).midicps * fine@i) * bendfreq, phases@i, vel * 0.00315 * amp * (levels@i))});
+    var oscs = tunings.collect({|tuning, i| SinOsc.ar(((note + tuning).midicps * fine@i) * bendfreq, phases@i, vel * 0.00315 /** amp*/ * (levels@i))});
 
     Out.ar(0, Pan2.ar(EnvGen.kr(Env.asr, gate, doneAction: 2) * oscs.sum));
 }).add;
