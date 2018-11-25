@@ -29,6 +29,15 @@ var c = pow(2,1200.reciprocal); // 2^(1/1200), need for cents calculation
 // these functions handle the logic for playing and updating the synth defined in the SynthDef below
 // design goal: midi messages are interpreted in these functions, synthdef just speaks frequencies
 var calclevels = { | ccs |
+    var mastervol = ccs@(midimap.mastervol) / 110; // leave some headroom
+
+    [mastervol * (ccs@(midimap.osc1.level) / 127)].addAll({ | i |
+        var harm = midimap.harms@i;
+        mastervol * (ccs@(harm.level) / 127)
+    }!8)
+};
+
+/*var calclevels = { | ccs |
     var mastervol = ccs@(midimap.mastervol) / 127;
     // scale the levels so multiple oscs are as loud as one
     var ccsum = [ccs@(midimap.osc1.level)].addAll({|i| ccs@(midimap.harms@i).level}!8).sum;
@@ -36,10 +45,10 @@ var calclevels = { | ccs |
         { [0]!9 },
         { [mastervol * ((127 * (ccs@(midimap.osc1.level) / ccsum)) / 127)].addAll({ | i |
             var harm = midimap.harms@i;
-            mastervol * ((127 *(ccs@(harm.level) / ccsum)) / 127)
+            mastervol * ((127 * (ccs@(harm.level) / ccsum)) / 127)
         }!8)
     });
-};
+};*/
 
 var calcbend = { | bendval, halfsteps = 2 |
     var benddiff = round((bendval - 8192) / (8192 / 2), 0.01);
